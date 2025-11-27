@@ -3,6 +3,10 @@ import { useEffect, useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabase"
 import "../../styles/CalendarPage.css" // Usa tu calendario real
+import { getPanamaHoliday } from "../../utils/panamaHolidays.js"
+
+// PANEL DE CULTOS FIJOS (debajo del calendario)
+import WeeklyServicesPanel from "../../components/weeklyServicesPanel.jsx"
 
 const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"]
 const DATE_FIELD = "date_start"
@@ -170,7 +174,7 @@ export default function LeaderEvents() {
     const { data: eventsData, error: eventsError } = await supabase
       .from("events")
       .select("*")
-      .eq("is_generated", false)
+      //.eq("is_generated", false)
       .order("date_start", { ascending: true })
 
     if (eventsError) {
@@ -412,29 +416,41 @@ export default function LeaderEvents() {
           ))}
         </div>
 
-        {/* CALENDARIO */}
-        <div className="month-grid">
-          {monthMatrix.map((week, wi) => (
-            <div key={wi} className="week-row">
-              {week.map((day, di) => {
-                const key = toDateKey(day)
-                const hasEvents = !!eventsByDay[key]
-                const isSelected = key === selectedKey
+       {/* CALENDARIO */}
+<div className="month-grid">
+  {monthMatrix.map((week, wi) => (
+    <div key={wi} className="week-row">
+      {week.map((day, di) => {
+        const key = toDateKey(day)
+        const hasEvents = !!eventsByDay[key]
+        const isSelected = key === selectedKey
 
-                return (
-                  <button
-                    key={di}
-                    className={`day-cell ${isSelected ? "day-selected" : ""}`}
-                    onClick={() => setSelectedDate(day)}
-                  >
-                    <span className="day-number">{day.getDate()}</span>
-                    {hasEvents && <span className="event-dot" />}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
-        </div>
+        // 🔴 Nuevo: verificar si es feriado nacional de Panamá
+        const holidayInfo = getPanamaHoliday(day)
+        const isHoliday = holidayInfo.isHoliday
+
+        return (
+          <button
+            key={di}
+            className={`day-cell 
+              ${isSelected ? "day-selected" : ""} 
+              ${isHoliday ? "day-holiday" : ""}`}
+            onClick={() => setSelectedDate(day)}
+            title={isHoliday ? holidayInfo.name : undefined}
+          >
+            <span className="day-number">
+              {day.getDate()}
+              {isHoliday && <span className="holiday-dot">●</span>}
+            </span>
+
+            {hasEvents && <span className="event-dot" />}
+          </button>
+        )
+      })}
+    </div>
+  ))}
+</div>
+
 
         {/* LISTA DE EVENTOS DEL DÍA (DE TODOS) */}
         <section className="events-panel">
@@ -475,6 +491,9 @@ export default function LeaderEvents() {
           )}
         </section>
       </div>
+
+      {/* 👇 NUEVO: CULTOS FIJOS AUTOMÁTICOS DEBAJO DEL CALENDARIO */}
+      <WeeklyServicesPanel />
 
       {/* CARD PRINCIPAL */}
       <div className="premium-card">

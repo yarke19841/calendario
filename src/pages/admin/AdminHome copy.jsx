@@ -110,7 +110,6 @@ export default function AdminHome() {
 
       {/* CARDS PRINCIPALES (MENÚ ADMIN) */}
       <div className="mt-10 grid gap-6 max-w-3xl mx-auto">
-        {/* Ministerios */}
         <Link to="/admin/ministries" className="option-card">
           <div className="option-card-icon">
             <svg
@@ -132,7 +131,6 @@ export default function AdminHome() {
           </div>
         </Link>
 
-        {/* Líderes */}
         <Link to="/admin/leaders" className="option-card">
           <div className="option-card-icon">
             <svg
@@ -152,7 +150,6 @@ export default function AdminHome() {
           </div>
         </Link>
 
-        {/* Eventos administrativos */}
         <Link to="/admin/events" className="option-card">
           <div className="option-card-icon">
             <svg
@@ -174,7 +171,7 @@ export default function AdminHome() {
           </div>
         </Link>
 
-        {/* Configuración de eventos fijos */}
+        {/* 🔴 NUEVO: CONFIGURACIÓN DE EVENTOS FIJOS */}
         <Link to="/admin/eventsconfig" className="option-card">
           <div className="option-card-icon">
             <svg
@@ -193,53 +190,6 @@ export default function AdminHome() {
             <p className="text-sm text-slate-500 mt-1">
               Define eventos recurrentes y reglas especiales que se generarán
               automáticamente.
-            </p>
-          </div>
-        </Link>
-
-        {/* ✅ Reglas del calendario automático */}
-        <Link to="/admin/calendar-rules" className="option-card">
-          <div className="option-card-icon">
-            <svg
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M4 4h16v4H4Zm0 6h16v4H4Zm0 6h10v4H4Z" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">
-              Reglas del calendario
-            </h3>
-            <p className="text-sm text-slate-500 mt-1">
-              Activa o desactiva las reglas que generan eventos automáticos
-              (cultos, vigilias, ayunos, especiales, feriados).
-            </p>
-          </div>
-        </Link>
-
-        {/* ✅ Generar calendario anual */}
-        <Link to="/admin/auto-calendar" className="option-card">
-          <div className="option-card-icon">
-            <svg
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
-              <path d="M12 11v5m0 0-2-2m2 2 2-2" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">
-              Generar calendario anual
-            </h3>
-            <p className="text-sm text-slate-500 mt-1">
-              Crea automáticamente todos los eventos del año según las reglas
-              activas del calendario.
             </p>
           </div>
         </Link>

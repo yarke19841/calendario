@@ -177,7 +177,7 @@ export default function AdminEvents() {
         .from("events")
         .select("*")
         // si tienes registros viejos sin is_generated, esto incluye ambos:
-        .or("is_generated.is.null,is_generated.eq.false")
+      //  .or("is_generated.is.null,is_generated.eq.false")
         .order("date_start", { ascending: true })
 
       if (eventsError) {

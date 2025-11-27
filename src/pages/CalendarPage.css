@@ -1,0 +1,73 @@
+.weekly-services {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.weekly-services__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.weekly-services__subtitle {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+
+.weekly-services__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.weekly-services__item {
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.weekly-services__label {
+  font-weight: 500;
+}
+
+.weekly-services__time {
+  color: #111827;
+}
+
+.weekly-services__description {
+  color: #4b5563;
+}
+
+
+.admin-calendar-rules {
+  padding: 1rem;
+}
+
+.admin-calendar-rules h2 {
+  margin-bottom: 0.5rem;
+}
+
+.rules-table {
+  width: 100%;
+  max-width: 900px;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.rules-table th,
+.rules-table td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+}
+
+.rules-table thead {
+  background: #f3f4f6;
+}
