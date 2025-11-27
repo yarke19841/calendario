@@ -1,0 +1,658 @@
+// src/pages/admin/AdminEvents.jsx
+import { useEffect, useState, useMemo } from "react"
+import { useNavigate } from "react-router-dom"
+import { supabase } from "../../lib/supabase"
+import "../../styles/CalendarPage.css" // Usa tu calendario real
+
+const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"]
+const DATE_FIELD = "date_start"
+
+// Normaliza YYYY-MM-DD aunque venga con hora o UTC
+function normalizeDate(dateStr) {
+  return dateStr?.slice(0, 10) || ""
+}
+
+// Convierte date_start ("YYYY-MM-DD" o "YYYY-MM-DDTHH:MM:SS")
+// en un Date LOCAL sin desfase de días
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null
+  const clean = String(dateStr).slice(0, 10)
+  const [y, m, d] = clean.split("-").map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d)
+}
+
+// Para comparar días "YYYY-MM-DD"
+function toDateKey(dateObj) {
+  const y = dateObj.getFullYear()
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0")
+  const d = String(dateObj.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
+// Construcción del mes
+function buildMonthMatrix(monthDate) {
+  const year = monthDate.getFullYear()
+  const month = monthDate.getMonth()
+  const firstOfMonth = new Date(year, month, 1)
+  const lastOfMonth = new Date(year, month + 1, 0)
+
+  const firstWeekday = (firstOfMonth.getDay() + 6) % 7 // Lunes=0
+  const totalCells = firstWeekday + lastOfMonth.getDate()
+  const weeks = Math.ceil(totalCells / 7)
+
+  const matrix = []
+  const startDate = new Date(year, month, 1 - firstWeekday)
+  let current = new Date(startDate)
+
+  for (let w = 0; w < weeks; w++) {
+    const week = []
+    for (let d = 0; d < 7; d++) {
+      week.push(new Date(current))
+      current.setDate(current.getDate() + 1)
+    }
+    matrix.push(week)
+  }
+
+  return matrix
+}
+
+export default function AdminEvents() {
+  const [adminName, setAdminName] = useState("")
+  const [ministryName, setMinistryName] = useState("Admin")
+  const [avatarUrl, setAvatarUrl] = useState("")
+
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [eventDate, setEventDate] = useState("")
+  const [color, setColor] = useState("")
+
+  const [userId, setUserId] = useState(null)
+  const [ministryId, setMinistryId] = useState(null)
+
+  // 🔹 TODOS los eventos (de todos, con ministry_name)
+  const [events, setEvents] = useState([])
+
+  const [saving, setSaving] = useState(false)
+  const [loadingList, setLoadingList] = useState(false)
+  const [error, setError] = useState("")
+  const [msg, setMsg] = useState("")
+
+  // --- edición ---
+  const [editingId, setEditingId] = useState(null)
+  const [editTitle, setEditTitle] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [editDate, setEditDate] = useState("")
+  const [editColor, setEditColor] = useState("")
+
+  const navigate = useNavigate()
+
+  // CALENDARIO — estados
+  const today = new Date()
+  const [currentMonth, setCurrentMonth] = useState(
+    new Date(today.getFullYear(), today.getMonth(), 1),
+  )
+  const [selectedDate, setSelectedDate] = useState(today)
+
+  const monthMatrix = buildMonthMatrix(currentMonth)
+  const selectedKey = toDateKey(selectedDate)
+
+  // -------------------------------
+  // CARGAR USUARIO + MINISTERIO ADMIN
+  // -------------------------------
+  useEffect(() => {
+    const loadUserAndData = async () => {
+      const { data, error: authError } = await supabase.auth.getUser()
+      const user = data?.user
+      if (authError || !user) {
+        console.error("Error auth AdminEvents:", authError)
+        return
+      }
+
+      setUserId(user.id)
+
+      let displayName = ""
+      let avatar = ""
+
+      // Perfil
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle()
+
+      if (profile?.full_name) displayName = profile.full_name
+      if (profile?.avatar_url) avatar = profile.avatar_url
+
+      if (!displayName) displayName = user.email || "Administrador"
+      setAdminName(displayName)
+
+      const finalAvatar =
+        avatar ||
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(
+          displayName,
+        )}&background=0f172a&color=fff&size=128`
+      setAvatarUrl(finalAvatar)
+
+      // Buscar ministerio "Admin" (name LIKE 'Admin%')
+      const { data: adminMinistry, error: ministryError } = await supabase
+        .from("ministries")
+        .select("id, name")
+        .ilike("name", "admin%")
+        .maybeSingle()
+
+      if (ministryError) {
+        console.error("Error cargando ministerio Admin:", ministryError)
+      }
+
+      if (adminMinistry?.id) {
+        setMinistryId(adminMinistry.id)
+        setMinistryName(adminMinistry.name || "Admin")
+      } else {
+        setMinistryId(null)
+        setMinistryName("Admin (ministerio no encontrado)")
+        setError(
+          "No se encontró un ministerio cuyo nombre inicie con 'Admin'. Crea uno en la tabla 'ministries'.",
+        )
+      }
+
+      await loadAllEvents()
+    }
+
+    loadUserAndData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // -------------------------------
+  // CARGAR TODOS LOS EVENTOS (DE TODOS) + MINISTERIO
+  // -------------------------------
+  const loadAllEvents = async () => {
+    setLoadingList(true)
+    setError("")
+    setMsg("")
+
+    try {
+      // 1) Eventos
+      const { data: eventsData, error: eventsError } = await supabase
+        .from("events")
+        .select("*")
+        // si tienes registros viejos sin is_generated, esto incluye ambos:
+        .or("is_generated.is.null,is_generated.eq.false")
+        .order("date_start", { ascending: true })
+
+      if (eventsError) {
+        console.error("Error cargando eventos:", eventsError)
+        setError("Error cargando eventos.")
+        setLoadingList(false)
+        return
+      }
+
+      // 2) Ministerios
+      const { data: ministriesData, error: ministriesError } = await supabase
+        .from("ministries")
+        .select("id, name")
+
+      if (ministriesError) {
+        console.error("Error cargando ministerios:", ministriesError)
+      }
+
+      const ministryMap = {}
+      ;(ministriesData || []).forEach((m) => {
+        ministryMap[m.id] = m.name
+      })
+
+      // 3) Adjuntar ministry_name a cada evento
+      const eventsWithMinistry = (eventsData || []).map((ev) => ({
+        ...ev,
+        ministry_name: ministryMap[ev.ministry_id] || "Sin ministerio",
+      }))
+
+      setEvents(eventsWithMinistry)
+    } catch (e) {
+      console.error("Error inesperado en loadAllEvents:", e)
+      setError("Error inesperado al cargar eventos.")
+    } finally {
+      setLoadingList(false)
+    }
+  }
+
+  // 🔹 "Mis eventos" = filtrados por created_by
+  const myEvents = useMemo(() => {
+    if (!userId) return []
+    return events.filter((ev) => ev.created_by === userId)
+  }, [events, userId])
+
+  // -----------------------------------
+  // CALENDARIO: eventos indexados por día (DE TODOS)
+  // -----------------------------------
+  const eventsByDay = useMemo(() => {
+    const map = {}
+
+    for (const ev of events) {
+      const key = normalizeDate(ev[DATE_FIELD])
+      if (!key) continue
+
+      if (!map[key]) map[key] = []
+      map[key].push(ev)
+    }
+    return map
+  }, [events])
+
+  const eventsForSelectedDay = eventsByDay[selectedKey] || []
+
+  // -------------------------------
+  // CREAR EVENTO (ADMIN) - SIEMPRE CON MINISTERIO ADMIN
+  // -------------------------------
+  const handleSave = async (e) => {
+    e.preventDefault()
+    setError("")
+    setMsg("")
+
+    if (!title.trim()) return setError("El nombre del evento es obligatorio.")
+    if (!eventDate) return setError("Debe seleccionar una fecha.")
+    if (!userId) return setError("No se pudo identificar al usuario.")
+    if (!ministryId) {
+      return setError(
+        "No se encontró el ministerio Admin. Verifica que exista en la tabla 'ministries'.",
+      )
+    }
+
+    setSaving(true)
+
+    try {
+      const safe = eventDate // YYYY-MM-DD
+
+      const { error } = await supabase.from("events").insert({
+        title: title.trim(),
+        description: description?.trim() || null,
+        ministry_id: ministryId, // 🔹 Siempre Admin
+        type: "MINISTERIAL",
+        status: "APROBADO",
+        date_start: safe,
+        date_end: safe,
+        all_day: true,
+        created_by: userId,
+        color: color || null,
+        is_generated: false,
+        is_fixed: false,
+      })
+
+      if (error) throw error
+
+      setMsg("Evento creado correctamente.")
+      setTitle("")
+      setDescription("")
+      setEventDate("")
+      setColor("")
+      await loadAllEvents()
+    } catch (err) {
+      console.error(err)
+      setError(err.message || "Error al crear el evento.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // -------------------------------
+  // EDICIÓN
+  // -------------------------------
+  const startEdit = (ev) => {
+    setEditingId(ev.id)
+    setEditTitle(ev.title)
+    setEditDescription(ev.description || "")
+    setEditDate(normalizeDate(ev.date_start))
+    setEditColor(ev.color || "")
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditTitle("")
+    setEditDescription("")
+    setEditDate("")
+    setEditColor("")
+  }
+
+  const handleUpdate = async (e) => {
+    e.preventDefault()
+    setError("")
+    setMsg("")
+
+    if (!editTitle.trim()) return setError("El nombre del evento es obligatorio.")
+    if (!editDate) return setError("Debe seleccionar una fecha.")
+
+    setSaving(true)
+
+    try {
+      const { error } = await supabase
+        .from("events")
+        .update({
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          date_start: editDate,
+          date_end: editDate,
+          color: editColor,
+        })
+        .eq("id", editingId)
+
+      if (error) throw error
+
+      setMsg("Evento actualizado correctamente.")
+      cancelEdit()
+      await loadAllEvents()
+    } catch (err) {
+      console.error(err)
+      setError(err.message || "Error al actualizar el evento.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    const ok = confirm("¿Eliminar este evento?")
+    if (!ok) return
+
+    const { error } = await supabase.from("events").delete().eq("id", id)
+
+    if (!error) {
+      setMsg("Evento eliminado.")
+      loadAllEvents()
+    } else {
+      console.error(error)
+      setError("No se pudo eliminar el evento.")
+    }
+  }
+
+  // -------------------------------
+  // RENDER
+  // -------------------------------
+  return (
+    <div className="min-h-screen bg-slate-100 p-6">
+      {/* BOTÓN VOLVER */}
+      <button
+        onClick={() => navigate("/admin")}
+        className="mb-4 text-sm px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-sm"
+      >
+        ← Volver
+      </button>
+
+      {/* HEADER */}
+      <div className="leader-header mb-6">
+        <img src={avatarUrl} alt="avatar" className="leader-avatar" />
+        <div>
+          <h1>Eventos administrativos</h1>
+          <p>
+            {adminName} • Ministerio: {ministryName}
+          </p>
+        </div>
+      </div>
+
+      {/* Mensajes */}
+      {(error || msg) && (
+        <div className="mb-4 text-sm">
+          {error && <p className="text-red-600">{error}</p>}
+          {msg && !error && <p className="text-emerald-600">{msg}</p>}
+        </div>
+      )}
+
+      {/* CALENDARIO COMPLETO (TODOS LOS EVENTOS) */}
+      <div className="calendar-page bg-white shadow rounded-lg p-4 mb-10">
+        <header className="calendar-header">
+          <button
+            className="nav-btn"
+            onClick={() =>
+              setCurrentMonth(
+                new Date(
+                  currentMonth.getFullYear(),
+                  currentMonth.getMonth() - 1,
+                  1,
+                ),
+              )
+            }
+          >
+            ‹
+          </button>
+
+          <h1 className="month-title">
+            {currentMonth.toLocaleDateString("es-ES", {
+              month: "long",
+              year: "numeric",
+            })}
+          </h1>
+
+          <button
+            className="nav-btn"
+            onClick={() =>
+              setCurrentMonth(
+                new Date(
+                  currentMonth.getFullYear(),
+                  currentMonth.getMonth() + 1,
+                  1,
+                ),
+              )
+            }
+          >
+            ›
+          </button>
+        </header>
+
+        {/* DÍAS DE LA SEMANA */}
+        <div className="weekday-row">
+          {WEEKDAYS.map((d) => (
+            <div key={d} className="weekday-cell">
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* CALENDARIO */}
+        <div className="month-grid">
+          {monthMatrix.map((week, wi) => (
+            <div key={wi} className="week-row">
+              {week.map((day, di) => {
+                const key = toDateKey(day)
+                const hasEvents = !!eventsByDay[key]
+                const isSelected = key === selectedKey
+
+                return (
+                  <button
+                    key={di}
+                    className={`day-cell ${isSelected ? "day-selected" : ""}`}
+                    onClick={() => setSelectedDate(day)}
+                  >
+                    <span className="day-number">{day.getDate()}</span>
+                    {hasEvents && <span className="event-dot" />}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* LISTA DE EVENTOS DEL DÍA (DE TODOS) */}
+        <section className="events-panel">
+          <h2 className="events-title">
+            Eventos para{" "}
+            {selectedDate.toLocaleDateString("es-ES", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })}
+          </h2>
+
+          {eventsForSelectedDay.length === 0 ? (
+            <p className="no-events">No hay eventos para este día.</p>
+          ) : (
+            <ul className="events-list">
+              {eventsForSelectedDay.map((ev) => {
+                const ministryLabel = ev.ministry_name || "Sin ministerio"
+                return (
+                  <li key={ev.id} className="event-item">
+                    <div className="event-time">
+                      {ev.start_time?.slice(0, 5) || "Todo el día"}
+                    </div>
+                    <div className="event-main">
+                      <div className="event-title">
+                        [{ministryLabel}] {ev.title}
+                      </div>
+                      {ev.description && (
+                        <div className="event-description">
+                          {ev.description}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {/* CARD PRINCIPAL */}
+      <div className="premium-card">
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* FORMULARIO */}
+          <section>
+            <h2 className="text-xl font-semibold text-slate-800 mb-3">
+              {editingId ? "Editar evento" : "Crear nuevo evento"}
+            </h2>
+
+            <form
+              onSubmit={editingId ? handleUpdate : handleSave}
+              className="space-y-5 text-sm"
+            >
+              <div>
+                <label className="premium-label">Nombre del evento</label>
+                <input
+                  type="text"
+                  className="premium-input"
+                  value={editingId ? editTitle : title}
+                  onChange={(e) =>
+                    editingId
+                      ? setEditTitle(e.target.value)
+                      : setTitle(e.target.value)
+                  }
+                  placeholder="Ej: Reunión general"
+                />
+              </div>
+
+              <div>
+                <label className="premium-label">Descripción</label>
+                <textarea
+                  className="premium-input"
+                  rows="3"
+                  value={editingId ? editDescription : description}
+                  onChange={(e) =>
+                    editingId
+                      ? setEditDescription(e.target.value)
+                      : setDescription(e.target.value)
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="premium-label">Fecha</label>
+                <input
+                  type="date"
+                  className="premium-input"
+                  value={editingId ? editDate : eventDate}
+                  onChange={(e) =>
+                    editingId
+                      ? setEditDate(e.target.value)
+                      : setEventDate(e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="flex gap-2 pt-3">
+                <button className="btn-primary flex-1">
+                  {saving
+                    ? "Guardando..."
+                    : editingId
+                    ? "Guardar cambios"
+                    : "Crear evento"}
+                </button>
+
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="btn-secondary"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </form>
+          </section>
+
+          {/* LISTA DE MIS EVENTOS */}
+          <section>
+            <h2 className="text-xl font-semibold text-slate-800 mb-3">
+              Mis eventos
+            </h2>
+
+            {loadingList ? (
+              <p className="text-sm text-slate-500">Cargando eventos...</p>
+            ) : myEvents.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Aún no has creado eventos.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-200 text-sm max-h-[380px] overflow-auto">
+                {myEvents.map((ev) => {
+                  const d = parseLocalDate(ev.date_start)
+                  if (!d) return null
+
+                  const day = d.getDate()
+                  const monthLabel = d
+                    .toLocaleDateString("es-PA", { month: "short" })
+                    .toUpperCase()
+                  const ministryLabel = ev.ministry_name || "Sin ministerio"
+
+                  return (
+                    <li key={ev.id} className="event-item">
+                      <div className="event-date">
+                        <div className="event-date-day">{day}</div>
+                        <div className="event-date-month">
+                          {monthLabel}
+                        </div>
+                      </div>
+
+                      <div className="flex-1">
+                        <div className="event-title">
+                          [{ministryLabel}] {ev.title}
+                        </div>
+
+                        {ev.description && (
+                          <div className="text-xs text-slate-500 mt-1">
+                            {ev.description}
+                          </div>
+                        )}
+
+                        <div className="event-actions">
+                          <button
+                            className="btn-table btn-edit"
+                            onClick={() => startEdit(ev)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className="btn-table btn-delete"
+                            onClick={() => handleDelete(ev.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
