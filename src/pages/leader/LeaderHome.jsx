@@ -1,11 +1,12 @@
+// src/pages/leader/LeaderHome.jsx
 import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabase"
 
 export default function LeaderHome() {
   const [leaderName, setLeaderName] = useState("")
-  const [ministryName, setMinistryName] = useState("")
-  const [avatarUrl, setAvatarUrl] = useState("")
+  const [ministryName, setMinistryName] = useState("General")
+  const [avatarUrl, setAvatarUrl] = useState(null)
   const [nextEvents, setNextEvents] = useState([])
 
   const navigate = useNavigate()
@@ -18,89 +19,114 @@ export default function LeaderHome() {
 
   // 🔵 Formato de fecha SIN UTC, igual que en LeaderEvents
   function formatDateLocal(dateStr) {
-  if (!dateStr) return "";
+    if (!dateStr) return ""
 
-  // Extrae YYYY-MM-DD aunque venga con zona horaria o milisegundos
-  const safe = dateStr.slice(0, 10); // "2025-11-29"
+    const safe = String(dateStr).slice(0, 10) // "2025-11-29"
+    const [y, m, d] = safe.split("-").map(Number)
 
-  const [y, m, d] = safe.split("-").map(Number);
-
-  return new Date(y, m - 1, d).toLocaleDateString("es-PA", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-}
-
+    return new Date(y, m - 1, d).toLocaleDateString("es-PA", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    })
+  }
 
   useEffect(() => {
     const loadData = async () => {
-      const session = await supabase.auth.getUser()
-      const user = session?.data?.user
-      if (!user) return
-
-      let displayName = ""
-      let profileAvatar = ""
-      let leaderAvatar = ""
-      let ministryId = null
-
-      // Perfil (nombre / avatar)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle()
-
-      if (profile?.full_name) displayName = profile.full_name
-      if (profile?.avatar_url) profileAvatar = profile.avatar_url
-
-      // Leader (nombre + ministry_id + avatar del líder)
-      const { data: leader } = await supabase
-        .from("leaders")
-        .select("name, ministry_id, avatar_url")
-        .eq("auth_user_id", user.id)
-        .maybeSingle()
-
-      if (leader?.name && !displayName) displayName = leader.name
-      if (leader?.avatar_url) leaderAvatar = leader.avatar_url
-      if (leader?.ministry_id) ministryId = leader.ministry_id
-
-      if (!displayName) displayName = user.email || "Líder"
-      setLeaderName(displayName)
-
-      // Ministerio
-      if (ministryId) {
-        const { data: ministry } = await supabase
-          .from("ministries")
-          .select("name")
-          .eq("id", ministryId)
-          .maybeSingle()
-
-        if (ministry?.name) setMinistryName(ministry.name)
+      const { data, error: authError } = await supabase.auth.getUser()
+      const user = data?.user
+      if (authError || !user) {
+        console.error("Error auth LeaderHome:", authError)
+        return
       }
 
-      // Avatar final
-      const finalAvatar =
-        leaderAvatar ||
-        profileAvatar ||
-        `https://ui-avatars.com/api/?name=${encodeURIComponent(
-          displayName
-        )}&background=6366f1&color=fff&size=128`
+      let displayName = ""
+      let joinedMinistryName = "General"
 
-      setAvatarUrl(finalAvatar)
+      // 🔹 LEADER + ministries (igual que en LeaderEvents)
+      try {
+        const { data: leader, error: leaderError } = await supabase
+          .from("leaders")
+          .select(
+            `
+            name,
+            ministry_id,
+            ministries ( name )
+          `
+          )
+          .eq("id", user.id) // usamos el mismo uuid de auth.users
+          .maybeSingle()
 
-      // 🔵 Próximos eventos (solo eventos futuros)
-      const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+        if (leaderError) {
+          console.error("Error cargando leader:", leaderError)
+        }
 
-      const { data: events } = await supabase
+        if (leader?.name) {
+          displayName = leader.name
+        }
+
+        joinedMinistryName = leader?.ministries?.name || "General"
+        setMinistryName(joinedMinistryName)
+      } catch (e) {
+        console.error("Error inesperado consultando leaders:", e)
+      }
+
+      // 🔹 Si no hay nombre en leaders, usar metadata o correo
+      if (!displayName) {
+        displayName =
+          user.user_metadata?.full_name ||
+          user.email ||
+          "Líder de la iglesia"
+      }
+
+      setLeaderName(displayName)
+
+      const finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        displayName,
+      )}&background=6366f1&color=fff&size=128`
+
+      setAvatarUrl(finalAvatar || null)
+
+      // 🔹 Próximos eventos (solo futuros creados por este líder)
+      const today = new Date().toISOString().slice(0, 10)
+
+      // 1) Traemos los eventos con ministry_id
+      const { data: eventsData, error: eventsError } = await supabase
         .from("events")
-        .select("title, date_start")
+        .select("id, title, date_start, ministry_id")
         .eq("created_by", user.id)
-        .gte("date_start", today) // evita el desfase
+        .gte("date_start", today)
         .order("date_start", { ascending: true })
         .limit(5)
 
-      setNextEvents(events || [])
+      if (eventsError) {
+        console.error("Error cargando próximos eventos:", eventsError)
+        setNextEvents([])
+        return
+      }
+
+      // 2) Traemos ministerios y armamos un mapa
+      const { data: ministriesData, error: ministriesError } = await supabase
+        .from("ministries")
+        .select("id, name")
+
+      if (ministriesError) {
+        console.error("Error cargando ministerios:", ministriesError)
+      }
+
+      const ministryMap = {}
+      ;(ministriesData || []).forEach((m) => {
+        ministryMap[m.id] = m.name
+      })
+
+      // 3) Adjuntamos ministry_name a cada evento
+      const eventsWithMinistry = (eventsData || []).map((ev) => ({
+        ...ev,
+        ministry_name:
+          ministryMap[ev.ministry_id] || joinedMinistryName || "Sin ministerio",
+      }))
+
+      setNextEvents(eventsWithMinistry)
     }
 
     loadData()
@@ -110,7 +136,11 @@ export default function LeaderHome() {
     <div className="min-h-screen bg-slate-100 p-6">
       {/* HEADER */}
       <div className="leader-header">
-        <img src={avatarUrl} alt="avatar líder" className="leader-avatar" />
+        <img
+          src={avatarUrl || undefined}
+          alt="avatar líder"
+          className="leader-avatar"
+        />
 
         <div className="flex-1">
           <h1>Hola, {leaderName}</h1>
@@ -133,12 +163,19 @@ export default function LeaderHome() {
       <div className="mt-10 grid gap-6 max-w-3xl mx-auto">
         <Link to="/calendar" className="option-card">
           <div className="option-card-icon">
-            <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <svg
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
               <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z" />
             </svg>
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-slate-800">Ver Calendario</h3>
+            <h3 className="text-lg font-semibold text-slate-800">
+              Ver Calendario
+            </h3>
             <p className="text-sm text-slate-500 mt-1">
               Consulta todas las actividades de la iglesia.
             </p>
@@ -147,12 +184,19 @@ export default function LeaderHome() {
 
         <Link to="/leader/events" className="option-card">
           <div className="option-card-icon">
-            <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <svg
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
               <path d="M12 20h9m-9 0l-3-3m3 3l3-3m-3 3V4" />
             </svg>
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-slate-800">Mis Eventos</h3>
+            <h3 className="text-lg font-semibold text-slate-800">
+              Mis Eventos
+            </h3>
             <p className="text-sm text-slate-500 mt-1">
               Crea nuevos eventos o revisa los que ya registraste.
             </p>
@@ -169,12 +213,12 @@ export default function LeaderHome() {
         {nextEvents.length === 0 ? (
           <p className="text-sm text-slate-500">No tienes eventos próximos.</p>
         ) : (
-          nextEvents.map((ev, i) => (
-            <div key={i} className="next-event-item">
+          nextEvents.map((ev) => (
+            <div key={ev.id} className="next-event-item">
               <strong className="text-indigo-600">
                 {formatDateLocal(ev.date_start)}
               </strong>{" "}
-              — {ev.title}
+              — [{ev.ministry_name}] {ev.title}
             </div>
           ))
         )}

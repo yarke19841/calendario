@@ -1,5 +1,6 @@
 // src/pages/admin/AdminLeaders.jsx
 import { useEffect, useState, useCallback } from "react"
+import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabase.js"
 
 export default function AdminLeaders() {
@@ -24,6 +25,8 @@ export default function AdminLeaders() {
   const [ministryId, setMinistryId] = useState("")
   const [active, setActive] = useState(true)
 
+  const navigate = useNavigate()
+
   // =============================
   // Carga inicial
   // =============================
@@ -32,7 +35,6 @@ export default function AdminLeaders() {
     setMsg("")
     setLoading(true)
     try {
-      // Ministérios (para el combo)
       const { data: mins, error: e1 } = await supabase
         .from("ministries")
         .select("id, name, active")
@@ -40,7 +42,6 @@ export default function AdminLeaders() {
 
       if (e1) throw e1
 
-      // Líderes actuales
       const { data: le, error: e2 } = await supabase
         .from("leaders")
         .select("id, name, email, role, ministry_id, active, created_at")
@@ -79,13 +80,10 @@ export default function AdminLeaders() {
 
       setAuthLoading(true)
       try {
-        // Ajusta "profiles" y las columnas a tu esquema real
         const { data, error: e1 } = await supabase
           .from("profiles")
           .select("id, full_name, email")
-          .or(
-            `full_name.ilike.%${term}%,email.ilike.%${term}%`
-          )
+          .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
           .order("full_name", { ascending: true })
           .limit(15)
 
@@ -98,17 +96,17 @@ export default function AdminLeaders() {
         console.error(err)
         setError(
           err.message ||
-            "Error al buscar en Auth/Profiles. Verifica el nombre de la tabla."
+            "Error al buscar en Auth/Profiles. Verifica el nombre de la tabla.",
         )
       } finally {
         setAuthLoading(false)
       }
     },
-    [searchTerm]
+    [searchTerm],
   )
 
   const handlePickAuthUser = (user) => {
-    setLeaderId(user.id) // uuid de auth.users
+    setLeaderId(user.id)
     setName(user.full_name || "")
     setEmail(user.email || "")
     setMsg("Usuario seleccionado desde Auth. Completa los datos y guarda.")
@@ -144,7 +142,7 @@ export default function AdminLeaders() {
     setSaving(true)
     try {
       const payload = {
-        id: leaderId, // mismo uuid de Auth
+        id: leaderId,
         name: name.trim(),
         email: email?.trim() || null,
         role,
@@ -160,7 +158,6 @@ export default function AdminLeaders() {
 
       setMsg("Líder guardado correctamente.")
       await loadData()
-      // No hacemos reset completo para que sigas viendo el registro
     } catch (err) {
       console.error(err)
       setError(err.message || "Error al guardar el líder.")
@@ -186,68 +183,228 @@ export default function AdminLeaders() {
   // Render
   // =============================
   return (
-    <div className="p-4 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Administrar Líderes</h1>
+    <div
+      style={{
+        padding: "2rem 1.5rem",
+        maxWidth: "1100px",
+        margin: "0 auto",
+      }}
+    >
+      {/* Header premium con Volver + título */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+          marginBottom: "1.75rem",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => navigate("/admin")}
+          style={{
+            alignSelf: "flex-start",
+            borderRadius: "999px",
+            padding: "0.45rem 1rem",
+            border: "1px solid #e5e7eb",
+            background: "#ffffff",
+            cursor: "pointer",
+            fontSize: "0.9rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+          }}
+        >
+          <span style={{ fontSize: "1rem" }}>←</span>
+          <span>Volver</span>
+        </button>
 
-      {loading && <p>Cargando datos...</p>}
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "1.9rem",
+              fontWeight: 700,
+            }}
+          >
+            Administrar líderes
+          </h1>
+          <p
+            style={{
+              margin: "0.35rem 0 0",
+              color: "#4b5563",
+              fontSize: "0.95rem",
+              maxWidth: "640px",
+            }}
+          >
+            Conecta usuarios de <strong>Auth / Profiles</strong> con la tabla de{" "}
+            <strong>líderes</strong>, asignando roles, ministerios y estado
+            activo.
+          </p>
+        </div>
+      </div>
+
+      {loading && (
+        <p style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#6b7280" }}>
+          Cargando datos...
+        </p>
+      )}
 
       {error && (
-        <div className="mb-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div
+          style={{
+            marginBottom: "1rem",
+            padding: "0.75rem 1rem",
+            borderRadius: "0.75rem",
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            color: "#991b1b",
+            fontSize: "0.9rem",
+          }}
+        >
           {error}
         </div>
       )}
 
       {msg && (
-        <div className="mb-3 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div
+          style={{
+            marginBottom: "1rem",
+            padding: "0.75rem 1rem",
+            borderRadius: "0.75rem",
+            background: "#ecfdf3",
+            border: "1px solid #4ade80",
+            color: "#166534",
+            fontSize: "0.9rem",
+          }}
+        >
           {msg}
         </div>
       )}
 
-      {/* ===================== BUSCAR EN AUTH / PROFILES ===================== */}
-      <section className="mb-6 border rounded-lg p-4 bg-white shadow-sm">
-        <h2 className="font-semibold mb-2">
+      {/* 1. Buscar en Auth / Profiles */}
+      <section
+        style={{
+          marginBottom: "1.5rem",
+          background: "#ffffff",
+          borderRadius: "1rem",
+          padding: "1.4rem 1.6rem",
+          boxShadow: "0 10px 25px rgba(15,23,42,0.07)",
+          border: "1px solid #f3f4f6",
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: "0.75rem",
+            fontSize: "1rem",
+            fontWeight: 600,
+          }}
+        >
           1. Buscar usuario en Auth / Profiles
         </h2>
+
         <form
           onSubmit={handleSearchAuth}
-          className="flex flex-col gap-2 sm:flex-row sm:items-center"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+            alignItems: "center",
+          }}
         >
           <input
             type="text"
-            className="border rounded px-3 py-2 flex-1 text-sm"
             placeholder="Escribe nombre o correo del líder..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              flex: "1 1 220px",
+              minWidth: "220px",
+              borderRadius: "0.75rem",
+              border: "1px solid #d1d5db",
+              padding: "0.5rem 0.75rem",
+              fontSize: "0.9rem",
+            }}
           />
           <button
             type="submit"
             disabled={authLoading}
-            className="px-4 py-2 text-sm rounded bg-indigo-600 text-white disabled:opacity-60"
+            style={{
+              padding: "0.5rem 1.2rem",
+              borderRadius: "999px",
+              border: "none",
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              background: authLoading ? "#9ca3af" : "#4f46e5",
+              color: "#ffffff",
+              cursor: authLoading ? "default" : "pointer",
+              boxShadow: authLoading
+                ? "none"
+                : "0 8px 18px rgba(79,70,229,0.35)",
+            }}
           >
             {authLoading ? "Buscando..." : "Buscar en Auth"}
           </button>
         </form>
 
         {authResults.length > 0 && (
-          <div className="mt-3 max-h-60 overflow-auto border rounded">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-100">
+          <div
+            style={{
+              marginTop: "0.9rem",
+              maxHeight: "260px",
+              overflow: "auto",
+              borderRadius: "0.75rem",
+              border: "1px solid #e5e7eb",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.85rem",
+              }}
+            >
+              <thead
+                style={{
+                  background: "#f9fafb",
+                  borderBottom: "1px solid #e5e7eb",
+                }}
+              >
                 <tr>
-                  <th className="px-2 py-1 text-left">Nombre</th>
-                  <th className="px-2 py-1 text-left">Correo</th>
-                  <th className="px-2 py-1"></th>
+                  <th style={{ textAlign: "left", padding: "0.4rem 0.6rem" }}>
+                    Nombre
+                  </th>
+                  <th style={{ textAlign: "left", padding: "0.4rem 0.6rem" }}>
+                    Correo
+                  </th>
+                  <th style={{ padding: "0.4rem 0.6rem" }} />
                 </tr>
               </thead>
               <tbody>
                 {authResults.map((u) => (
-                  <tr key={u.id} className="border-t">
-                    <td className="px-2 py-1">{u.full_name}</td>
-                    <td className="px-2 py-1">{u.email}</td>
-                    <td className="px-2 py-1 text-right">
+                  <tr key={u.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "0.4rem 0.6rem" }}>{u.full_name}</td>
+                    <td style={{ padding: "0.4rem 0.6rem" }}>{u.email}</td>
+                    <td
+                      style={{
+                        padding: "0.4rem 0.6rem",
+                        textAlign: "right",
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => handlePickAuthUser(u)}
-                        className="text-xs px-2 py-1 rounded bg-emerald-600 text-white"
+                        style={{
+                          fontSize: "0.75rem",
+                          padding: "0.25rem 0.6rem",
+                          borderRadius: "999px",
+                          border: "none",
+                          background: "#059669",
+                          color: "#ffffff",
+                          cursor: "pointer",
+                        }}
                       >
                         Usar como líder
                       </button>
@@ -259,35 +416,98 @@ export default function AdminLeaders() {
           </div>
         )}
 
-        <p className="mt-2 text-xs text-gray-500">
+        <p
+          style={{
+            marginTop: "0.6rem",
+            fontSize: "0.75rem",
+            color: "#9ca3af",
+          }}
+        >
           * Si no aparece, luego podemos hacer un flujo para crearlo en Auth y
           después registrarlo como líder.
         </p>
       </section>
 
-      {/* ===================== FORMULARIO DE LÍDER ===================== */}
-      <section className="mb-6 border rounded-lg p-4 bg-white shadow-sm">
-        <h2 className="font-semibold mb-2">2. Datos del líder</h2>
-        <form onSubmit={handleSaveLeader} className="space-y-3 text-sm">
-          <div className="grid gap-3 sm:grid-cols-2">
+      {/* 2. Datos del líder */}
+      <section
+        style={{
+          marginBottom: "1.5rem",
+          background: "#ffffff",
+          borderRadius: "1rem",
+          padding: "1.4rem 1.6rem",
+          boxShadow: "0 10px 25px rgba(15,23,42,0.07)",
+          border: "1px solid #f3f4f6",
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: "0.75rem",
+            fontSize: "1rem",
+            fontWeight: 600,
+          }}
+        >
+          2. Datos del líder
+        </h2>
+
+        <form onSubmit={handleSaveLeader} style={{ fontSize: "0.9rem" }}>
+          {/* fila 1 */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: "0.9rem",
+              marginBottom: "0.9rem",
+            }}
+          >
             <div>
-              <label className="block mb-1 font-medium">
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.25rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                }}
+              >
                 ID de usuario (Auth)
               </label>
               <input
                 type="text"
-                className="border rounded px-3 py-2 w-full text-xs bg-gray-100"
                 value={leaderId || ""}
                 readOnly
                 placeholder="Selecciona un usuario desde Auth arriba"
+                style={{
+                  width: "100%",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #e5e7eb",
+                  padding: "0.45rem 0.7rem",
+                  fontSize: "0.8rem",
+                  background: "#f9fafb",
+                }}
               />
             </div>
+
             <div>
-              <label className="block mb-1 font-medium">Rol del líder</label>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.25rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                }}
+              >
+                Rol del líder
+              </label>
               <select
-                className="border rounded px-3 py-2 w-full"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
+                style={{
+                  width: "100%",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #d1d5db",
+                  padding: "0.45rem 0.7rem",
+                  fontSize: "0.9rem",
+                }}
               >
                 <option value="leader">Leader</option>
                 <option value="admin">Admin</option>
@@ -295,36 +515,98 @@ export default function AdminLeaders() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* fila 2 */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: "0.9rem",
+              marginBottom: "0.9rem",
+            }}
+          >
             <div>
-              <label className="block mb-1 font-medium">Nombre</label>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.25rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                }}
+              >
+                Nombre
+              </label>
               <input
                 type="text"
-                className="border rounded px-3 py-2 w-full"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Nombre del líder"
+                style={{
+                  width: "100%",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #d1d5db",
+                  padding: "0.45rem 0.7rem",
+                  fontSize: "0.9rem",
+                }}
               />
             </div>
+
             <div>
-              <label className="block mb-1 font-medium">Correo</label>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.25rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                }}
+              >
+                Correo
+              </label>
               <input
                 type="email"
-                className="border rounded px-3 py-2 w-full"
                 value={email || ""}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="correo@ejemplo.com"
+                style={{
+                  width: "100%",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #d1d5db",
+                  padding: "0.45rem 0.7rem",
+                  fontSize: "0.9rem",
+                }}
               />
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* fila 3 */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: "0.9rem",
+              marginBottom: "0.9rem",
+            }}
+          >
             <div>
-              <label className="block mb-1 font-medium">Ministerio</label>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.25rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                }}
+              >
+                Ministerio
+              </label>
               <select
-                className="border rounded px-3 py-2 w-full"
                 value={ministryId}
                 onChange={(e) => setMinistryId(e.target.value)}
+                style={{
+                  width: "100%",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #d1d5db",
+                  padding: "0.45rem 0.7rem",
+                  fontSize: "0.9rem",
+                }}
               >
                 <option value="">[Sin ministerio asignado]</option>
                 {ministries.map((m) => (
@@ -334,32 +616,62 @@ export default function AdminLeaders() {
                 ))}
               </select>
             </div>
-            <div className="flex items-center gap-2 mt-5">
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                marginTop: "0.8rem",
+              }}
+            >
               <input
                 id="active"
                 type="checkbox"
-                className="h-4 w-4"
                 checked={active}
                 onChange={(e) => setActive(e.target.checked)}
+                style={{ width: "16px", height: "16px" }}
               />
-              <label htmlFor="active" className="text-sm font-medium">
+              <label
+                htmlFor="active"
+                style={{ fontSize: "0.9rem", fontWeight: 500 }}
+              >
                 Líder activo
               </label>
             </div>
           </div>
 
-          <div className="flex gap-2 mt-3">
+          <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.4rem" }}>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 rounded bg-indigo-600 text-white text-sm disabled:opacity-60"
+              style={{
+                padding: "0.5rem 1.2rem",
+                borderRadius: "999px",
+                border: "none",
+                fontSize: "0.9rem",
+                fontWeight: 600,
+                background: saving ? "#9ca3af" : "#4f46e5",
+                color: "#ffffff",
+                cursor: saving ? "default" : "pointer",
+                boxShadow: saving
+                  ? "none"
+                  : "0 8px 18px rgba(79,70,229,0.35)",
+              }}
             >
               {saving ? "Guardando..." : "Guardar líder"}
             </button>
             <button
               type="button"
               onClick={resetForm}
-              className="px-4 py-2 rounded border text-sm"
+              style={{
+                padding: "0.5rem 1.2rem",
+                borderRadius: "999px",
+                border: "1px solid #e5e7eb",
+                fontSize: "0.9rem",
+                background: "#ffffff",
+                cursor: "pointer",
+              }}
             >
               Limpiar formulario
             </button>
@@ -367,23 +679,74 @@ export default function AdminLeaders() {
         </form>
       </section>
 
-      {/* ===================== LISTA DE LÍDERES ===================== */}
-      <section className="border rounded-lg p-4 bg-white shadow-sm">
-        <h2 className="font-semibold mb-2">3. Líderes registrados</h2>
+      {/* 3. Líderes registrados */}
+      <section
+        style={{
+          background: "#ffffff",
+          borderRadius: "1rem",
+          padding: "1.4rem 1.6rem",
+          boxShadow: "0 10px 25px rgba(15,23,42,0.07)",
+          border: "1px solid #f3f4f6",
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: "0.75rem",
+            fontSize: "1rem",
+            fontWeight: 600,
+          }}
+        >
+          3. Líderes registrados
+        </h2>
+
         {leaders.length === 0 ? (
-          <p className="text-sm text-gray-500">Aún no hay líderes registrados.</p>
+          <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
+            Aún no hay líderes registrados.
+          </p>
         ) : (
-          <div className="overflow-auto max-h-[400px] border rounded">
-            <table className="w-full text-xs sm:text-sm">
-              <thead className="bg-gray-100">
+          <div
+            style={{
+              marginTop: "0.3rem",
+              maxHeight: "360px",
+              overflow: "auto",
+              borderRadius: "0.75rem",
+              border: "1px solid #e5e7eb",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.85rem",
+              }}
+            >
+              <thead
+                style={{
+                  background: "#f9fafb",
+                  borderBottom: "1px solid #e5e7eb",
+                }}
+              >
                 <tr>
-                  <th className="px-2 py-1 text-left">Nombre</th>
-                  <th className="px-2 py-1 text-left">Correo</th>
-                  <th className="px-2 py-1 text-left">Rol</th>
-                  <th className="px-2 py-1 text-left">Ministerio</th>
-                  <th className="px-2 py-1 text-left">Activo</th>
-                  <th className="px-2 py-1 text-left">Creado</th>
-                  <th className="px-2 py-1"></th>
+                  <th style={{ textAlign: "left", padding: "0.45rem 0.6rem" }}>
+                    Nombre
+                  </th>
+                  <th style={{ textAlign: "left", padding: "0.45rem 0.6rem" }}>
+                    Correo
+                  </th>
+                  <th style={{ textAlign: "left", padding: "0.45rem 0.6rem" }}>
+                    Rol
+                  </th>
+                  <th style={{ textAlign: "left", padding: "0.45rem 0.6rem" }}>
+                    Ministerio
+                  </th>
+                  <th style={{ textAlign: "left", padding: "0.45rem 0.6rem" }}>
+                    Activo
+                  </th>
+                  <th style={{ textAlign: "left", padding: "0.45rem 0.6rem" }}>
+                    Creado
+                  </th>
+                  <th style={{ padding: "0.45rem 0.6rem" }} />
                 </tr>
               </thead>
               <tbody>
@@ -391,24 +754,38 @@ export default function AdminLeaders() {
                   const ministryName =
                     ministries.find((m) => m.id === l.ministry_id)?.name || "-"
                   return (
-                    <tr key={l.id} className="border-t">
-                      <td className="px-2 py-1">{l.name}</td>
-                      <td className="px-2 py-1">{l.email}</td>
-                      <td className="px-2 py-1">{l.role}</td>
-                      <td className="px-2 py-1">{ministryName}</td>
-                      <td className="px-2 py-1">
+                    <tr key={l.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "0.45rem 0.6rem" }}>{l.name}</td>
+                      <td style={{ padding: "0.45rem 0.6rem" }}>{l.email}</td>
+                      <td style={{ padding: "0.45rem 0.6rem" }}>{l.role}</td>
+                      <td style={{ padding: "0.45rem 0.6rem" }}>
+                        {ministryName}
+                      </td>
+                      <td style={{ padding: "0.45rem 0.6rem" }}>
                         {l.active ? "Sí" : "No"}
                       </td>
-                      <td className="px-2 py-1">
+                      <td style={{ padding: "0.45rem 0.6rem" }}>
                         {l.created_at
                           ? new Date(l.created_at).toLocaleDateString()
                           : ""}
                       </td>
-                      <td className="px-2 py-1 text-right">
+                      <td
+                        style={{
+                          padding: "0.45rem 0.6rem",
+                          textAlign: "right",
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() => handleEditFromTable(l)}
-                          className="text-xs px-2 py-1 rounded border"
+                          style={{
+                            fontSize: "0.75rem",
+                            padding: "0.25rem 0.6rem",
+                            borderRadius: "999px",
+                            border: "1px solid #e5e7eb",
+                            background: "#ffffff",
+                            cursor: "pointer",
+                          }}
                         >
                           Editar
                         </button>

@@ -3,9 +3,9 @@ import { useEffect, useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabase"
 import "../../styles/CalendarPage.css" // Usa tu calendario real
-import WeeklyServicesPanel from "../../components/WeeklyServicesPanel.jsx" // ✅ leyenda de colores
+import WeeklyServicesPanel from "../../components/weeklyServicesPanel.jsx" // ✅ leyenda de colores
 
-const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"]
+const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
 const DATE_FIELD = "date_start"
 
 // Normaliza YYYY-MM-DD aunque venga con hora o UTC
@@ -38,7 +38,7 @@ function buildMonthMatrix(monthDate) {
   const firstOfMonth = new Date(year, month, 1)
   const lastOfMonth = new Date(year, month + 1, 0)
 
-  const firstWeekday = (firstOfMonth.getDay() + 6) % 7 // Lunes=0
+  const firstWeekday = firstOfMonth.getDay() // Domingo = 0
   const totalCells = firstWeekday + lastOfMonth.getDate()
   const weeks = Math.ceil(totalCells / 7)
 
@@ -62,7 +62,7 @@ function buildMonthMatrix(monthDate) {
 function getCurrentMonthRange() {
   const today = new Date()
   const year = today.getFullYear()
-  const month = today.getMonth() // 0–11
+  const month = today.getMonth()
 
   const first = new Date(year, month, 1)
   const last = new Date(year, month + 1, 0)
@@ -83,7 +83,7 @@ function getCurrentMonthRange() {
 export default function AdminEvents() {
   const [adminName, setAdminName] = useState("")
   const [ministryName, setMinistryName] = useState("Admin")
-  const [avatarUrl, setAvatarUrl] = useState("")
+  const [avatarUrl, setAvatarUrl] = useState(null)
 
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -139,28 +139,42 @@ export default function AdminEvents() {
 
       setUserId(user.id)
 
+      // 🔹 1) Intentar traer el nombre desde la tabla leaders
       let displayName = ""
-      let avatar = ""
+      try {
+        const { data: leaderRow, error: leaderError } = await supabase
+          .from("leaders")
+          .select("name")
+          .eq("id", user.id)
+          .maybeSingle()
 
-      // Perfil
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle()
+        if (leaderError) {
+          console.error("Error buscando líder:", leaderError)
+        }
 
-      if (profile?.full_name) displayName = profile.full_name
-      if (profile?.avatar_url) avatar = profile.avatar_url
+        if (leaderRow?.name) {
+          displayName = leaderRow.name
+        }
+      } catch (e) {
+        console.error("Error inesperado consultando leaders:", e)
+      }
 
-      if (!displayName) displayName = user.email || "Administrador"
+      // 🔹 2) Si no hay en leaders, usar metadata o correo
+      if (!displayName) {
+        displayName =
+          user.user_metadata?.full_name ||
+          user.email ||
+          "Administrador"
+      }
+
       setAdminName(displayName)
 
-      const finalAvatar =
-        avatar ||
-        `https://ui-avatars.com/api/?name=${encodeURIComponent(
-          displayName,
-        )}&background=0f172a&color=fff&size=128`
-      setAvatarUrl(finalAvatar)
+      // Avatar basado en el nombre
+      const finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        displayName,
+      )}&background=0f172a&color=fff&size=128`
+
+      setAvatarUrl(finalAvatar || null)
 
       // Buscar ministerio "Admin" (name LIKE 'Admin%')
       const { data: adminMinistry, error: ministryError } = await supabase
@@ -203,7 +217,6 @@ export default function AdminEvents() {
       const { data: eventsData, error: eventsError } = await supabase
         .from("events")
         .select("*")
-        // .or("is_generated.is.null,is_generated.eq.false")
         .order("date_start", { ascending: true })
 
       if (eventsError) {
@@ -485,7 +498,7 @@ export default function AdminEvents() {
 
       {/* HEADER */}
       <div className="leader-header mb-6">
-        <img src={avatarUrl} alt="avatar" className="leader-avatar" />
+        <img src={avatarUrl || undefined} alt="avatar" className="leader-avatar" />
         <div>
           <h1>Eventos administrativos</h1>
           <p>
@@ -563,7 +576,7 @@ export default function AdminEvents() {
                 const isSelected = key === selectedKey
 
                 const dotColor = hasEvents
-                  ? dayEvents[0].color || "#475569" // gris por defecto
+                  ? dayEvents[0].color || "#475569"
                   : null
 
                 return (
@@ -627,7 +640,7 @@ export default function AdminEvents() {
         </section>
       </div>
 
-      {/* 🔹 MISMO LUGAR QUE EN LEADEREVENTS: LEYENDA DE COLORES */}
+      {/* 🔹 LEYENDA DE COLORES */}
       <WeeklyServicesPanel />
 
       {/* CARD PRINCIPAL */}

@@ -7,7 +7,8 @@ import "../../styles/CalendarPage.css" // Usa tu calendario real
 // PANEL DE CULTOS FIJOS (incluye la leyenda de colores)
 import WeeklyServicesPanel from "../../components/weeklyServicesPanel.jsx"
 
-const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"]
+// Domingo → Sábado
+const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
 const DATE_FIELD = "date_start"
 
 // Normaliza YYYY-MM-DD aunque venga con hora o UTC
@@ -33,14 +34,15 @@ function toDateKey(dateObj) {
   return `${y}-${m}-${d}`
 }
 
-// Construcción del mes
+// Construcción del mes con Domingo como primer día
 function buildMonthMatrix(monthDate) {
   const year = monthDate.getFullYear()
   const month = monthDate.getMonth()
   const firstOfMonth = new Date(year, month, 1)
   const lastOfMonth = new Date(year, month + 1, 0)
 
-  const firstWeekday = (firstOfMonth.getDay() + 6) % 7
+  // getDay(): 0 = Domingo, 6 = Sábado
+  const firstWeekday = firstOfMonth.getDay() // domingo = 0
   const totalCells = firstWeekday + lastOfMonth.getDate()
   const weeks = Math.ceil(totalCells / 7)
 
@@ -85,7 +87,7 @@ function getCurrentMonthRange() {
 export default function LeaderEvents() {
   const [leaderName, setLeaderName] = useState("")
   const [ministryName, setMinistryName] = useState("General")
-  const [avatarUrl, setAvatarUrl] = useState("")
+  const [avatarUrl, setAvatarUrl] = useState(null)
 
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -132,25 +134,19 @@ export default function LeaderEvents() {
   // -------------------------------
   useEffect(() => {
     const loadUserAndData = async () => {
-      const { data } = await supabase.auth.getUser()
+      const { data, error: authError } = await supabase.auth.getUser()
       const user = data?.user
-      if (!user) return
+      if (authError || !user) {
+        console.error("Error auth LeaderEvents:", authError)
+        return
+      }
 
       setUserId(user.id)
 
       let displayName = ""
-      let avatar = ""
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle()
-
-      if (profile?.full_name) displayName = profile.full_name
-      if (profile?.avatar_url) avatar = profile.avatar_url
-
-      const { data: leader } = await supabase
+      // 🔹 LEADER + ministries (sin tabla profiles)
+      const { data: leader, error: leaderError } = await supabase
         .from("leaders")
         .select(
           `
@@ -159,11 +155,16 @@ export default function LeaderEvents() {
           ministries ( name )
         `,
         )
-        .eq("auth_user_id", user.id)
+        .eq("id", user.id) // usamos el uuid de auth.users
         .maybeSingle()
 
-      if (leader?.name && !displayName) displayName = leader.name
-      if (leader?.avatar_url) avatar = leader.avatar_url
+      if (leaderError) {
+        console.error("Error cargando leader:", leaderError)
+      }
+
+      if (leader?.name) {
+        displayName = leader.name
+      }
 
       const mId = leader?.ministry_id ?? null
       setMinistryId(mId)
@@ -171,15 +172,20 @@ export default function LeaderEvents() {
       const joinedMinistryName = leader?.ministries?.name || "General"
       setMinistryName(joinedMinistryName)
 
-      setLeaderName(displayName || user.email)
+      if (!displayName) {
+        displayName =
+          user.user_metadata?.full_name ||
+          user.email ||
+          "Líder de la iglesia"
+      }
 
-      const finalAvatar =
-        avatar ||
-        `https://ui-avatars.com/api/?name=${encodeURIComponent(
-          displayName,
-        )}&background=6366f1&color=fff&size=128`
+      setLeaderName(displayName)
 
-      setAvatarUrl(finalAvatar)
+      const finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        displayName,
+      )}&background=6366f1&color=fff&size=128`
+
+      setAvatarUrl(finalAvatar || null)
 
       await loadAllEvents()
     }
@@ -200,7 +206,6 @@ export default function LeaderEvents() {
     const { data: eventsData, error: eventsError } = await supabase
       .from("events")
       .select("*")
-      //.eq("is_generated", false)
       .order("date_start", { ascending: true })
 
     if (eventsError) {
@@ -469,7 +474,11 @@ export default function LeaderEvents() {
 
       {/* HEADER */}
       <div className="leader-header mb-6">
-        <img src={avatarUrl} alt="avatar" className="leader-avatar" />
+        <img
+          src={avatarUrl || undefined}
+          alt="avatar"
+          className="leader-avatar"
+        />
         <div>
           <h1>Mis eventos</h1>
           <p>

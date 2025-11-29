@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase"
 
 export default function AdminHome() {
   const [adminName, setAdminName] = useState("Administrador")
-  const [avatarUrl, setAvatarUrl] = useState("")
+  const [avatarUrl, setAvatarUrl] = useState(null)
   const [nextEvents, setNextEvents] = useState([])
 
   const navigate = useNavigate()
@@ -48,42 +48,71 @@ export default function AdminHome() {
         return
       }
 
+      // 👉 Ya no usamos tabla profiles, solo auth + localStorage
       let displayName =
-        localStorage.getItem("leader_name") || "" // por si ya lo guardaste
-      let profileAvatar = ""
+        localStorage.getItem("leader_name") ||
+        user.user_metadata?.full_name ||
+        user.email ||
+        "Administrador"
 
-      // Perfil (nombre / avatar)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle()
-
-      if (profile?.full_name) displayName = profile.full_name
-      if (profile?.avatar_url) profileAvatar = profile.avatar_url
-
-      if (!displayName) displayName = user.email || "Administrador"
       setAdminName(displayName)
 
-      const finalAvatar =
-        profileAvatar ||
-        `https://ui-avatars.com/api/?name=${encodeURIComponent(
-          displayName,
-        )}&background=0f172a&color=fff&size=128`
+      const finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        displayName,
+      )}&background=0f172a&color=fff&size=128`
 
-      setAvatarUrl(finalAvatar)
+      setAvatarUrl(finalAvatar || null)
 
-      // 🔵 Próximos eventos (para toda la iglesia, no solo creados por el admin)
+      // 🔵 Próximos eventos (para toda la iglesia, con ministerio)
       const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
 
-      const { data: events } = await supabase
+      const { data: events, error: eventsError } = await supabase
         .from("events")
-        .select("title, date_start")
+        .select("id, title, date_start, ministry_id")
         .gte("date_start", today)
         .order("date_start", { ascending: true })
         .limit(5)
 
-      setNextEvents(events || [])
+      if (eventsError) {
+        console.error("Error cargando eventos:", eventsError)
+        setNextEvents([])
+        return
+      }
+
+      const rawEvents = events || []
+
+      // Obtener solo los ministry_id distintos
+      const ministryIds = Array.from(
+        new Set(
+          rawEvents
+            .map((ev) => ev.ministry_id)
+            .filter((id) => !!id),
+        ),
+      )
+
+      let ministryMap = {}
+      if (ministryIds.length > 0) {
+        const { data: mins, error: minsError } = await supabase
+          .from("ministries")
+          .select("id, name")
+          .in("id", ministryIds)
+
+        if (minsError) {
+          console.error("Error cargando ministerios:", minsError)
+        } else {
+          ministryMap = (mins || []).reduce((acc, m) => {
+            acc[m.id] = m.name
+            return acc
+          }, {})
+        }
+      }
+
+      const decorated = rawEvents.map((ev) => ({
+        ...ev,
+        ministry_name: ministryMap[ev.ministry_id] || null,
+      }))
+
+      setNextEvents(decorated)
     }
 
     loadData()
@@ -93,7 +122,11 @@ export default function AdminHome() {
     <div className="min-h-screen bg-slate-100 p-6">
       {/* HEADER */}
       <div className="leader-header">
-        <img src={avatarUrl} alt="avatar admin" className="leader-avatar" />
+        <img
+          src={avatarUrl || null}
+          alt="avatar admin"
+          className="leader-avatar"
+        />
 
         <div className="flex-1">
           <h1>Hola, {adminName}</h1>
@@ -256,19 +289,26 @@ export default function AdminHome() {
             No hay eventos próximos registrados.
           </p>
         ) : (
-          nextEvents.map((ev, i) => (
-            <div key={i} className="next-event-item">
+          nextEvents.map((ev) => (
+            <div key={ev.id} className="next-event-item">
               <strong className="text-indigo-600">
                 {formatDateLocal(ev.date_start)}
               </strong>{" "}
-              — {ev.title}
+              —{" "}
+              {ev.ministry_name ? (
+                <>
+                  <span className="uppercase tracking-wide text-slate-600">
+                    {ev.ministry_name}
+                  </span>{" "}
+                  · {ev.title}
+                </>
+              ) : (
+                ev.title
+              )}
             </div>
           ))
         )}
       </div>
     </div>
   )
-
-  
-
 }
