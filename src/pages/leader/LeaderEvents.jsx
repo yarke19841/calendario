@@ -5,15 +5,14 @@ import { supabase } from "../../lib/supabase"
 import "../../styles/CalendarPage.css" // Usa tu calendario real
 
 // PANEL DE CULTOS FIJOS (incluye la leyenda de colores)
-import WeeklyServicesPanel from "../../components/WeeklyServicesPanel.jsx" // ✅ leyenda de colores
-
+import WeeklyServicesPanel from "../../components/weeklyServicesPanel.jsx"
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"]
 const DATE_FIELD = "date_start"
 
 // Normaliza YYYY-MM-DD aunque venga con hora o UTC
 function normalizeDate(dateStr) {
-  return dateStr?.slice(0, 10) || ""git add <div className=""></div>
+  return dateStr?.slice(0, 10) || ""
 }
 
 // Convierte date_start ("YYYY-MM-DD" o "YYYY-MM-DDTHH:MM:SS")
