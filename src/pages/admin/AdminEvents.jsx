@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabase"
 import "../../styles/CalendarPage.css" // Usa tu calendario real
+import WeeklyServicesPanel from "../../components/WeeklyServicesPanel.jsx" // ✅ leyenda de colores
 
 const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"]
 const DATE_FIELD = "date_start"
@@ -57,6 +58,28 @@ function buildMonthMatrix(monthDate) {
   return matrix
 }
 
+// 🔹 Rango del mes actual (YYYY-MM-DD)
+function getCurrentMonthRange() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = today.getMonth() // 0–11
+
+  const first = new Date(year, month, 1)
+  const last = new Date(year, month + 1, 0)
+
+  const toInputDate = (d) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${y}-${m}-${day}`
+  }
+
+  return {
+    from: toInputDate(first),
+    to: toInputDate(last),
+  }
+}
+
 export default function AdminEvents() {
   const [adminName, setAdminName] = useState("")
   const [ministryName, setMinistryName] = useState("Admin")
@@ -84,6 +107,11 @@ export default function AdminEvents() {
   const [editDescription, setEditDescription] = useState("")
   const [editDate, setEditDate] = useState("")
   const [editColor, setEditColor] = useState("")
+
+  // 🔎 Filtros y lista para "Mis eventos"
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [filteredMyEvents, setFilteredMyEvents] = useState([])
 
   const navigate = useNavigate()
 
@@ -172,12 +200,10 @@ export default function AdminEvents() {
     setMsg("")
 
     try {
-      // 1) Eventos
       const { data: eventsData, error: eventsError } = await supabase
         .from("events")
         .select("*")
-        // si tienes registros viejos sin is_generated, esto incluye ambos:
-      //  .or("is_generated.is.null,is_generated.eq.false")
+        // .or("is_generated.is.null,is_generated.eq.false")
         .order("date_start", { ascending: true })
 
       if (eventsError) {
@@ -187,7 +213,6 @@ export default function AdminEvents() {
         return
       }
 
-      // 2) Ministerios
       const { data: ministriesData, error: ministriesError } = await supabase
         .from("ministries")
         .select("id, name")
@@ -201,7 +226,6 @@ export default function AdminEvents() {
         ministryMap[m.id] = m.name
       })
 
-      // 3) Adjuntar ministry_name a cada evento
       const eventsWithMinistry = (eventsData || []).map((ev) => ({
         ...ev,
         ministry_name: ministryMap[ev.ministry_id] || "Sin ministerio",
@@ -221,6 +245,57 @@ export default function AdminEvents() {
     if (!userId) return []
     return events.filter((ev) => ev.created_by === userId)
   }, [events, userId])
+
+  // 🔹 Helper para filtrar "Mis eventos" por fecha y ordenar
+  function filterMyEventsByDate(from, to, { limitToTen = false } = {}) {
+    let list = [...myEvents]
+
+    list = list.filter((ev) => {
+      const key = normalizeDate(ev[DATE_FIELD])
+      if (!key) return false
+
+      if (from && key < from) return false
+      if (to && key > to) return false
+      return true
+    })
+
+    list.sort((a, b) => {
+      const ka = normalizeDate(a[DATE_FIELD])
+      const kb = normalizeDate(b[DATE_FIELD])
+      if (ka < kb) return -1
+      if (ka > kb) return 1
+      return 0
+    })
+
+    if (limitToTen) {
+      list = list.slice(0, 10)
+    }
+
+    return list
+  }
+
+  // 🔹 Inicializar filtros a mes actual y top 10 cuando ya hay mis eventos
+  useEffect(() => {
+    if (!userId) return
+    if (!myEvents.length) {
+      setFilteredMyEvents([])
+      return
+    }
+
+    if (!dateFrom && !dateTo) {
+      const { from, to } = getCurrentMonthRange()
+      setDateFrom(from)
+      setDateTo(to)
+      const filtered = filterMyEventsByDate(from, to, { limitToTen: true })
+      setFilteredMyEvents(filtered)
+    } else {
+      const filtered = filterMyEventsByDate(dateFrom || null, dateTo || null, {
+        limitToTen: false,
+      })
+      setFilteredMyEvents(filtered)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myEvents, userId])
 
   // -----------------------------------
   // CALENDARIO: eventos indexados por día (DE TODOS)
@@ -265,7 +340,7 @@ export default function AdminEvents() {
       const { error } = await supabase.from("events").insert({
         title: title.trim(),
         description: description?.trim() || null,
-        ministry_id: ministryId, // 🔹 Siempre Admin
+        ministry_id: ministryId,
         type: "MINISTERIAL",
         status: "APROBADO",
         date_start: safe,
@@ -362,6 +437,39 @@ export default function AdminEvents() {
     }
   }
 
+  // 🔹 Botón Buscar en "Mis eventos"
+  const handleSearchMyEvents = (e) => {
+    e.preventDefault()
+    setMsg("")
+    setError("")
+
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setError("La fecha inicial no puede ser mayor que la fecha final.")
+      return
+    }
+
+    const filtered = filterMyEventsByDate(dateFrom || null, dateTo || null, {
+      limitToTen: false,
+    })
+    setFilteredMyEvents(filtered)
+  }
+
+  // 🔹 Botón "Mes actual (Top 10)" en "Mis eventos"
+  const handleResetCurrentMonthMyEvents = () => {
+    setMsg("")
+    setError("")
+
+    const { from, to } = getCurrentMonthRange()
+    setDateFrom(from)
+    setDateTo(to)
+
+    const filtered = filterMyEventsByDate(from, to, { limitToTen: true })
+    setFilteredMyEvents(filtered)
+  }
+
+  const hasAnyMyEvents = myEvents.length > 0
+  const hasFilteredMyEvents = filteredMyEvents.length > 0
+
   // -------------------------------
   // RENDER
   // -------------------------------
@@ -450,8 +558,13 @@ export default function AdminEvents() {
             <div key={wi} className="week-row">
               {week.map((day, di) => {
                 const key = toDateKey(day)
-                const hasEvents = !!eventsByDay[key]
+                const dayEvents = eventsByDay[key] || []
+                const hasEvents = dayEvents.length > 0
                 const isSelected = key === selectedKey
+
+                const dotColor = hasEvents
+                  ? dayEvents[0].color || "#475569" // gris por defecto
+                  : null
 
                 return (
                   <button
@@ -460,7 +573,13 @@ export default function AdminEvents() {
                     onClick={() => setSelectedDate(day)}
                   >
                     <span className="day-number">{day.getDate()}</span>
-                    {hasEvents && <span className="event-dot" />}
+
+                    {hasEvents && (
+                      <span
+                        className="event-dot"
+                        style={dotColor ? { backgroundColor: dotColor } : {}}
+                      />
+                    )}
                   </button>
                 )
               })}
@@ -507,6 +626,9 @@ export default function AdminEvents() {
           )}
         </section>
       </div>
+
+      {/* 🔹 MISMO LUGAR QUE EN LEADEREVENTS: LEYENDA DE COLORES */}
+      <WeeklyServicesPanel />
 
       {/* CARD PRINCIPAL */}
       <div className="premium-card">
@@ -592,15 +714,63 @@ export default function AdminEvents() {
               Mis eventos
             </h2>
 
+            {/* Filtros de fecha para Mis eventos */}
+            <form
+              onSubmit={handleSearchMyEvents}
+              className="flex flex-wrap gap-3 items-end mb-4 text-xs md:text-sm"
+            >
+              <div className="flex flex-col">
+                <label className="premium-label mb-1">Desde</label>
+                <input
+                  type="date"
+                  className="premium-input"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="premium-label mb-1">Hasta</label>
+                <input
+                  type="date"
+                  className="premium-input"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="submit"
+                  className="btn-table btn-edit"
+                  disabled={loadingList}
+                >
+                  Buscar
+                </button>
+                <button
+                  type="button"
+                  className="btn-table btn-delete"
+                  onClick={handleResetCurrentMonthMyEvents}
+                  disabled={loadingList}
+                >
+                  Mes actual (Top 10)
+                </button>
+              </div>
+            </form>
+
             {loadingList ? (
               <p className="text-sm text-slate-500">Cargando eventos...</p>
-            ) : myEvents.length === 0 ? (
+            ) : !hasAnyMyEvents ? (
               <p className="text-sm text-slate-500">
                 Aún no has creado eventos.
               </p>
+            ) : !hasFilteredMyEvents ? (
+              <p className="text-sm text-slate-500">
+                No hay eventos en el rango seleccionado.
+              </p>
             ) : (
               <ul className="divide-y divide-slate-200 text-sm max-h-[380px] overflow-auto">
-                {myEvents.map((ev) => {
+                {filteredMyEvents.map((ev) => {
                   const d = parseLocalDate(ev.date_start)
                   if (!d) return null
 

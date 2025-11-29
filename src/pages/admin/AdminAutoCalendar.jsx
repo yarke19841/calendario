@@ -71,7 +71,7 @@ if (userError) {
     status: "APROBADO",            // 👈 encaja con tu enum event_status
     ministry_id: "1",             // eventos generales
     created_by: userId,              // permitido (nullable)
-    color: null,
+     color: ev.color || null, 
     is_generated: true,
     is_fixed: true,
     // year, rule_id, has_conflict, conflicts_with, created_at, last_updated_at

@@ -33,16 +33,6 @@ function getLastWeekdayOfMonth(year, monthIndex, weekday) {
   return date
 }
 
-// Primer lunes del mes
-function getFirstMondayOfMonth(year, monthIndex) {
-  const date = new Date(year, monthIndex, 1)
-  while (date.getDay() !== 1) {
-    // 1 = lunes
-    date.setDate(date.getDate() + 1)
-  }
-  return date
-}
-
 // Helper para crear evento con la forma que usa AdminAutoCalendar
 function makeEvent({
   date,
@@ -52,7 +42,6 @@ function makeEvent({
   type = "especial",
   rule_key,
   is_global = true,
-  color = null, // 👈 ahora soporta color
 }) {
   return {
     date,
@@ -62,7 +51,6 @@ function makeEvent({
     type, // "culto" | "ayuno" | "vigilia" | "feriado" | "especial"
     rule_key,
     is_global,
-    color,
   }
 }
 
@@ -82,12 +70,10 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
     ? new Set(enabledRuleKeys)
     : null
 
-  const useRule = (key) => (!enabledSet ? true : enabledSet.has(key))
+  const useRule = (key) =>
+    !enabledSet ? true : enabledSet.has(key)
 
   let events = []
-
-  // 👇 NUEVO: conjunto de fechas que pertenecen a la "semana de ayuno congregacional"
-  const fastingWeekDates = new Set()
 
   // ------------------------------------
   // 1) CULTOS SEMANALES (DOM, MIÉ, VIE)
@@ -113,7 +99,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             time: "07:00",
             type: "culto",
             rule_key: "weekly_sunday_service",
-            color: "#3b82f6", // azul
           }),
         )
       }
@@ -126,7 +111,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             time: "19:30",
             type: "culto",
             rule_key: "weekly_wednesday_service",
-            color: "#3b82f6", // azul
           }),
         )
       }
@@ -139,7 +123,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             time: "19:30",
             type: "culto",
             rule_key: "weekly_friday_service",
-            color: "#3b82f6", // azul
           }),
         )
       }
@@ -148,39 +131,8 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
     }
   }
 
-  // ------------------------------------
-  // 2) SEMANA DE AYUNO CONGREGACIONAL
-  //    Primera semana completa LUN–SÁB de cada mes
-  // ------------------------------------
-  if (useRule("monthly_fasting_week")) {
-    for (let month = 0; month < 12; month++) {
-      const firstMonday = getFirstMondayOfMonth(yearInt, month)
-      // lunes a sábado
-      for (let i = 0; i < 6; i++) {
-        const d = addDays(firstMonday, i)
-        if (d.getMonth() !== month) continue
-        const dateStr = formatDate(d)
-        fastingWeekDates.add(dateStr)
-
-        events.push(
-          makeEvent({
-            date: dateStr,
-            title: "Semana de ayuno congregacional",
-            type: "ayuno",
-            rule_key: "monthly_fasting_week",
-            color: "#15803d", // verde oscuro
-          }),
-        )
-      }
-    }
-  }
-
   // ------------------------------
-  // 3) AYUNOS CONGREGACIONALES
-  //    (jueves y sábado)
-  //    - NO se generan en la semana de ayuno
-  //    - NO se genera ayuno el sábado después de
-  //      la vigilia congregacional (último viernes)
+  // 2) AYUNOS CONGREGACIONALES
   // ------------------------------
   if (
     useRule("weekly_thursday_fast") ||
@@ -194,47 +146,26 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
       const day = current.getDay() // 4=Jueves, 6=Sábado
       const dateStr = formatDate(current)
 
-      // ❌ Si está dentro de la semana de ayuno congregacional, no generamos ayuno normal
-      const isInFastingWeek = fastingWeekDates.has(dateStr)
-
-      if (day === 4 && useRule("weekly_thursday_fast") && !isInFastingWeek) {
+      if (day === 4 && useRule("weekly_thursday_fast")) {
         events.push(
           makeEvent({
             date: dateStr,
             title: "Ayuno congregacional (jueves)",
             type: "ayuno",
             rule_key: "weekly_thursday_fast",
-            color: "#22c55e", // verde
           }),
         )
       }
 
-      if (day === 6 && useRule("weekly_saturday_fast") && !isInFastingWeek) {
-        // 🔴 Regla: NO hay ayuno el sábado después de la Vigilia congregacional
-        // (Vigilia congregacional = último viernes del mes)
-        const prevDay = addDays(current, -1)
-        const prevMonth = prevDay.getMonth()
-        const lastFridayOfPrevMonth = getLastWeekdayOfMonth(
-          prevDay.getFullYear(),
-          prevMonth,
-          5, // viernes
+      if (day === 6 && useRule("weekly_saturday_fast")) {
+        events.push(
+          makeEvent({
+            date: dateStr,
+            title: "Ayuno congregacional (sábado)",
+            type: "ayuno",
+            rule_key: "weekly_saturday_fast",
+          }),
         )
-
-        const isAfterVigiliaCongregacional =
-          useRule("monthly_vigilia_congregacional") &&
-          formatDate(prevDay) === formatDate(lastFridayOfPrevMonth)
-
-        if (!isAfterVigiliaCongregacional) {
-          events.push(
-            makeEvent({
-              date: dateStr,
-              title: "Ayuno congregacional (sábado)",
-              type: "ayuno",
-              rule_key: "weekly_saturday_fast",
-              color: "#22c55e", // verde
-            }),
-          )
-        }
       }
 
       current.setDate(current.getDate() + 1)
@@ -242,7 +173,7 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
   }
 
   // ------------------------------------
-  // 4) SANTA CENA (1er DOMINGO DE MES)
+  // 3) SANTA CENA (1er DOMINGO DE MES)
   // ------------------------------------
   if (useRule("monthly_santa_cena")) {
     for (let month = 0; month < 12; month++) {
@@ -253,14 +184,13 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
           title: "Santa Cena",
           type: "especial",
           rule_key: "monthly_santa_cena",
-          color: "#eab308", // amarillo
         }),
       )
     }
   }
 
   // ------------------------------------
-  // 5) PRIMER VIERNES DEL MES
+  // 4) PRIMER VIERNES DEL MES
   //    - Arrojando Coronas
   //    - Venta de comida (Alabanza)
   // ------------------------------------
@@ -279,7 +209,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             title: "Arrojando Coronas",
             type: "especial",
             rule_key: "monthly_arrojando_coronas",
-            color: "#eab308", // amarillo
           }),
         )
       }
@@ -291,7 +220,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             title: "Venta de comida (Alabanza)",
             type: "especial",
             rule_key: "monthly_food_sale_alabanza",
-            color: "#eab308", // amarillo
           }),
         )
       }
@@ -299,7 +227,7 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
   }
 
   // ------------------------------
-  // 6) VIGILIAS
+  // 5) VIGILIAS
   //    - 2do viernes: diáconos
   //    - 3er viernes: ministerios
   //    - último viernes: congregacional
@@ -320,7 +248,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             time: "22:00",
             type: "vigilia",
             rule_key: "monthly_vigilia_diaconos",
-            color: "#7c3aed", // morado
           }),
         )
       }
@@ -335,7 +262,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             time: "22:00",
             type: "vigilia",
             rule_key: "monthly_vigilia_ministerios",
-            color: "#7c3aed", // morado
           }),
         )
       }
@@ -350,7 +276,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
             time: "22:00",
             type: "vigilia",
             rule_key: "monthly_vigilia_congregacional",
-            color: "#7c3aed", // morado
           }),
         )
       }
@@ -358,7 +283,7 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
   }
 
   // ------------------------------
-  // 7) LUZ Y VIDA (último sábado de octubre)
+  // 6) LUZ Y VIDA (último sábado de octubre)
   // ------------------------------
   if (useRule("october_luz_y_vida")) {
     const lastSaturdayOct = getLastWeekdayOfMonth(yearInt, 9, 6) // octubre = 9, sábado=6
@@ -368,13 +293,15 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
         title: "Luz y Vida",
         type: "especial",
         rule_key: "october_luz_y_vida",
-        color: "#eab308", // amarillo
       }),
     )
   }
 
   // ------------------------------
-  // 8) CULTOS ESPECIALES DE ENERO
+  // 7) CULTOS ESPECIALES DE ENERO
+  //    - Culto de unción (primer domingo del año, excepto 1 de enero)
+  //    - Compromiso de santidad (último domingo de enero)
+  //    - Ayuno de Daniel (10–25 enero)
   // ------------------------------
   if (useRule("yearly_culto_uncion")) {
     // primer domingo de enero
@@ -390,7 +317,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
         title: "Culto de unción de inicio de año",
         type: "especial",
         rule_key: "yearly_culto_uncion",
-        color: "#06b6d4", // celeste
       }),
     )
   }
@@ -403,7 +329,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
         title: "Compromiso de santidad",
         type: "especial",
         rule_key: "yearly_compromiso_santidad",
-        color: "#06b6d4", // celeste
       }),
     )
   }
@@ -418,14 +343,13 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
           title: "Ayuno de Daniel",
           type: "ayuno",
           rule_key: "yearly_ayuno_daniel",
-          color: "#22c55e", // verde
         }),
       )
     }
   }
 
   // ------------------------------
-  // 9) FERIADOS NACIONALES DE PANAMÁ
+  // 8) FERIADOS NACIONALES DE PANAMÁ
   // ------------------------------
   if (useRule("national_holiday")) {
     const holidays = [
@@ -449,14 +373,13 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
           title: h.title,
           type: "feriado",
           rule_key: "national_holiday",
-          color: "#dc2626", // rojo
         }),
       )
     }
   }
 
   // ------------------------------
-  // 10) DÍA DEL PADRE – 3er domingo de junio
+  // 9) DÍA DEL PADRE – 3er domingo de junio
   // ------------------------------
   if (useRule("day_father_panama")) {
     const thirdSundayJune = getNthWeekdayOfMonth(yearInt, 5, 0, 3) // junio=5, domingo=0, 3er
@@ -466,7 +389,6 @@ export function generateAutoEventsForYear(year, enabledRuleKeys = null) {
         title: "Día del Padre (Panamá)",
         type: "especial",
         rule_key: "day_father_panama",
-        color: "#06b6d4", // celeste
       }),
     )
   }
