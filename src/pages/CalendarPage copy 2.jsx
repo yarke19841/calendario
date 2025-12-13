@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../lib/supabase"
 import "../styles/CalendarPage.css"
-import { exportToICS } from "../utils/exportICS"
 
 // Domingo → Sábado
 const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
@@ -60,10 +59,7 @@ function buildMonthMatrix(monthDate) {
   return matrix
 }
 
-export default function CalendarPage({
-  isExportMode = false,
-  onEventsLoaded,
-}) {
+export default function CalendarPage() {
   const navigate = useNavigate()
   const today = new Date()
 
@@ -127,13 +123,6 @@ export default function CalendarPage({
     loadAllEvents()
   }, [])
 
-  // 👉 Avisar al padre (pantalla de export) cuando tengamos eventos
-  useEffect(() => {
-    if (onEventsLoaded) {
-      onEventsLoaded(events)
-    }
-  }, [events, onEventsLoaded])
-
   // -------------------------------
   // CALENDARIO: matriz del mes + eventos indexados por día
   // -------------------------------
@@ -158,21 +147,6 @@ export default function CalendarPage({
   }, [events])
 
   const eventsForSelectedDay = eventsByDay[selectedKey] || []
-
-  // 🔹 Eventos del mes visible (para exportar .ics)
-  const eventsForCurrentMonth = useMemo(() => {
-    if (!events || events.length === 0) return []
-
-    const year = currentMonth.getFullYear()
-    const month = currentMonth.getMonth() + 1 // 1–12
-
-    return events.filter((ev) => {
-      const key = normalizeDate(ev[DATE_FIELD])
-      if (!key) return false
-      const [y, m] = key.split("-").map(Number)
-      return y === year && m === month
-    })
-  }, [events, currentMonth])
 
   // Helpers de comparación
   const isSameDay = (a, b) =>
@@ -200,20 +174,6 @@ export default function CalendarPage({
     setSelectedDate(day)
   }
 
-  // 🔹 Exportar ICS del mes actual
-  const handleExportClick = () => {
-    if (!eventsForCurrentMonth || eventsForCurrentMonth.length === 0) {
-      alert("No hay eventos en este mes para exportar.")
-      return
-    }
-
-    const year = currentMonth.getFullYear()
-    const month = String(currentMonth.getMonth() + 1).padStart(2, "0")
-    const fileName = `calendario-imj-${year}-${month}.ics`
-
-    exportToICS(eventsForCurrentMonth, fileName)
-  }
-
   // Formato de hora
   const formatTimeRange = (ev) => {
     if (!ev.start_time && !ev.end_time) return "Todo el día"
@@ -230,41 +190,29 @@ export default function CalendarPage({
   return (
     <div className="min-h-screen bg-slate-100 p-6">
       <div className="calendar-page bg-white shadow rounded-lg p-4 mx-auto max-w-4xl">
-        {/* BOTÓN VOLVER (solo si no estamos en modo export, por si acaso) */}
-        {!isExportMode && (
-          <button
-            onClick={() => navigate("/leader")}
-            className="mb-4 text-sm px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-sm"
-          >
-            ← Volver
+        {/* BOTÓN VOLVER */}
+        <button
+          onClick={() => navigate("/leader")}
+          className="mb-4 text-sm px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-sm"
+        >
+          ← Volver
+        </button>
+
+        {/* HEADER DEL MES */}
+        <header className="calendar-header">
+          <button className="nav-btn" onClick={goPrevMonth}>
+            ‹
           </button>
-        )}
 
-        {/* HEADER DEL MES + EXPORTAR */}
-        <header className="calendar-header flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <button className="nav-btn" onClick={goPrevMonth}>
-              ‹
-            </button>
+          <h1 className="month-title">
+            {currentMonth.toLocaleDateString("es-ES", {
+              month: "long",
+              year: "numeric",
+            })}
+          </h1>
 
-            <h1 className="month-title">
-              {currentMonth.toLocaleDateString("es-ES", {
-                month: "long",
-                year: "numeric",
-              })}
-            </h1>
-
-            <button className="nav-btn" onClick={goNextMonth}>
-              ›
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleExportClick}
-            className="text-xs sm:text-sm px-3 py-1.5 rounded-full border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 shadow-sm"
-          >
-            Exportar .ics
+          <button className="nav-btn" onClick={goNextMonth}>
+            ›
           </button>
         </header>
 

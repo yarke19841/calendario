@@ -71,3 +71,35 @@
 .rules-table thead {
   background: #f3f4f6;
 }
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: 8.5in 11in;
+    margin: 1cm;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: #ffffff;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .calendar-print-container {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+}

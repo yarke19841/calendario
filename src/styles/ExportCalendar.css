@@ -1,0 +1,31 @@
+/* 👇 Muy importante para que no se vea el texto "solo impresión" en pantalla */
+.print-only {
+  display: none;
+}
+
+/* ESTILOS PARA EXPORTAR A PDF EN HOJA CARTA */
+@media print {
+  @page {
+    size: 8.5in 11in;
+    margin: 1cm;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: #ffffff;
+  }
+
+  /* Todo lo que tenga esta clase NO sale en el PDF */
+  .no-print {
+    display: none !important;
+  }
+
+  .calendar-print-container {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+  }
+}

@@ -17,11 +17,9 @@ export default function LeaderHome() {
     navigate("/")
   }
 
-  // 🔵 Formato de fecha SIN UTC, igual que en LeaderEvents
   function formatDateLocal(dateStr) {
     if (!dateStr) return ""
-
-    const safe = String(dateStr).slice(0, 10) // "2025-11-29"
+    const safe = String(dateStr).slice(0, 10)
     const [y, m, d] = safe.split("-").map(Number)
 
     return new Date(y, m - 1, d).toLocaleDateString("es-PA", {
@@ -43,7 +41,6 @@ export default function LeaderHome() {
       let displayName = ""
       let joinedMinistryName = "General"
 
-      // 🔹 LEADER + ministries (igual que en LeaderEvents)
       try {
         const { data: leader, error: leaderError } = await supabase
           .from("leaders")
@@ -54,24 +51,20 @@ export default function LeaderHome() {
             ministries ( name )
           `
           )
-          .eq("id", user.id) // usamos el mismo uuid de auth.users
+          .eq("id", user.id)
           .maybeSingle()
 
         if (leaderError) {
           console.error("Error cargando leader:", leaderError)
         }
 
-        if (leader?.name) {
-          displayName = leader.name
-        }
-
+        if (leader?.name) displayName = leader.name
         joinedMinistryName = leader?.ministries?.name || "General"
         setMinistryName(joinedMinistryName)
       } catch (e) {
         console.error("Error inesperado consultando leaders:", e)
       }
 
-      // 🔹 Si no hay nombre en leaders, usar metadata o correo
       if (!displayName) {
         displayName =
           user.user_metadata?.full_name ||
@@ -87,10 +80,8 @@ export default function LeaderHome() {
 
       setAvatarUrl(finalAvatar || null)
 
-      // 🔹 Próximos eventos (solo futuros creados por este líder)
       const today = new Date().toISOString().slice(0, 10)
 
-      // 1) Traemos los eventos con ministry_id
       const { data: eventsData, error: eventsError } = await supabase
         .from("events")
         .select("id, title, date_start, ministry_id")
@@ -105,7 +96,6 @@ export default function LeaderHome() {
         return
       }
 
-      // 2) Traemos ministerios y armamos un mapa
       const { data: ministriesData, error: ministriesError } = await supabase
         .from("ministries")
         .select("id, name")
@@ -119,7 +109,6 @@ export default function LeaderHome() {
         ministryMap[m.id] = m.name
       })
 
-      // 3) Adjuntamos ministry_name a cada evento
       const eventsWithMinistry = (eventsData || []).map((ev) => ({
         ...ev,
         ministry_name:
@@ -161,6 +150,7 @@ export default function LeaderHome() {
 
       {/* CARDS PRINCIPALES */}
       <div className="mt-10 grid gap-6 max-w-3xl mx-auto">
+        {/* 1. Ver calendario general */}
         <Link to="/calendar" className="option-card">
           <div className="option-card-icon">
             <svg
@@ -182,6 +172,7 @@ export default function LeaderHome() {
           </div>
         </Link>
 
+        {/* 2. Mis eventos del ministerio */}
         <Link to="/leader/events" className="option-card">
           <div className="option-card-icon">
             <svg
@@ -199,6 +190,28 @@ export default function LeaderHome() {
             </h3>
             <p className="text-sm text-slate-500 mt-1">
               Crea nuevos eventos o revisa los que ya registraste.
+            </p>
+          </div>
+        </Link>
+
+        {/* 3. NUEVO: Exportar calendario */}
+        <Link to="/leader/export-calendar" className="option-card">
+          <div className="option-card-icon">
+            <svg
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path d="M5 4h14v14H5zM9 2v4M15 2v4M8 11h8M8 15h5" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800">
+              Exportar Calendario
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">
+              Descarga el calendario en PDF o archivo para celular (.ics).
             </p>
           </div>
         </Link>

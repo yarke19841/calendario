@@ -5,6 +5,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom"
 
 import LoginPage from "./pages/LoginPage.jsx"
 import CalendarPage from "./pages/CalendarPage.jsx"
+import ExportCalendarPage from "./pages/ExportCalendarPage.jsx"
+
 
 /* ADMIN */
 import AdminHome from "./pages/admin/AdminHome.jsx"
@@ -44,14 +46,17 @@ ReactDOM.createRoot(document.getElementById("root")).render(
    <Route path="/admin/calendar-rules" element={<AdminCalendarRules />} />   {/* AQUÍ EXACTO */}
 <Route path="/admin/auto-calendar" element={<AdminAutoCalendar />} />
 <Route path="/admin/events-search" element={<AdminEventsSearch />} />
-
+<Route path="/admin/export-calendar" element={<ExportCalendarPage />} />
 
         {/* LEADER */}
         <Route path="/leader" element={<LeaderHome />} />
         <Route path="/leader/events" element={<LeaderEvents />} />
 
+<Route path="/leader/export-calendar" element={<ExportCalendarPage />} />
+
         {/* CALENDARIO GENERAL */}
         <Route path="/calendar" element={<CalendarPage />} />
+
 
       </Routes>
     </BrowserRouter>
